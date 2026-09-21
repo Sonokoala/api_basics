@@ -1,9 +1,9 @@
 const express = require('express');
 const app = express();
 
-app.get("/api/greet/:name", (req, res) => {
+app.get("/api/color/:color", (req, res) => {
   res.json({
-    message: `Hello, ${req.params.name}`
+    greeting: `My favorit color is  ${req.params.color}`
   });
 });
 
@@ -13,17 +13,17 @@ app.get("/about", (req, res) => {
   res.send("<h1>About Us</h1>");
 });
 
-app.get("/api/user", (req, res) => {
+app.get("/api/country_details/:country/national_sports/:sports", (req, res) => {
   res.json({
-    name: "Madoka",
-    role: "Analyst"
+    country: req.params.country,
+    national_sports: req.params.sports
   });
 });
 
 app.get("/api/orders/:id", (req, res) => {
   res.json({
     orderId: req.params.id,
-    status: "pending"
+    status_completed: "completed",
   });
 });
 
