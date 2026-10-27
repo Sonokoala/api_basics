@@ -1,141 +1,155 @@
-//save
-// ============================================================
-// ORDERS API
-// Everything lives in this one file so it is easy to follow:
-// the data, the five endpoints, and the server itself.
-//
-// To run it:
-// npm init -y
-// npm install express
-// node server.js
-//
-// The server then listens on http://localhost:3000
-// ============================================================
+// D:\04_Projects\Lab\gen_ai\api_basics\client.js
 
-const express = require('express');
+// IPv6の解決トラブルを防ぐため 127.0.0.1 を指定（localhost:3000 でも可）
+const BASE_URL = 'http://127.0.0.1:3000';
+const HEADERS = { 'Content-Type': 'application/json' };
 
-const app = express();
-app.use(express.json()); // lets the server read JSON sent in a request body
+// 共通通信 & エラーハンドラ
+async function safeFetch(url, options = {}, id = null, method = 'GET') {
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (err) {
+    if (err.cause?.code === 'ECONNREFUSED' || err.message.includes('fetch failed')) {
+      throw new Error('[接続エラー] ポート3000で Citizen API サーバーが起動していません。別プロジェクト側のサーバーを起動してください。');
+    }
+    throw err;
+  }
 
-// ------------------------------------------------------------
-// THE DATA
-// In a real project this would come from a database. Here it is
-// just an array of objects kept in memory, so it resets every
-// time the server restarts.
-// ------------------------------------------------------------
+  const idText = id ? " '" + id + "'" : "";
 
-const orders = [
-{ id: 1, item: 'Keyboard', quantity: 2, status: 'pending' },
-{ id: 2, item: 'Monitor', quantity: 1, status: 'shipped' },
-{ id: 3, item: 'Mouse', quantity: 4, status: 'pending' },
-{ id: 4, item: 'Laptop stand', quantity: 1, status: 'delivered' }
-];
+  // IDが存在しない場合 (404 Not Found)
+  if (response.status === 404) {
+    throw new Error("[" + method + " Error] The ID" + idText + " does not exist.");
+  }
 
-let nextId = 5; // the id that the next created order will get
+  if (!response.ok) {
+    throw new Error("[" + method + " Error] Request failed with status " + response.status);
+  }
 
-// ------------------------------------------------------------
-// 1. GET /api/orders
-// Returns the whole list. Nothing can really go wrong here,
-// so it always answers with 200.
-// ------------------------------------------------------------
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
 
-app.get('/api/orders', (req, res) => {
-res.status(200).json(orders);
-});
+  // レスポンスボディで存在判定を行う場合
+  if (data.exists === false || data.found === false || data.error === 'not_found') {
+    throw new Error("[" + method + " Error] The ID" + idText + " does not exist.");
+  }
 
-// ------------------------------------------------------------
-// 2. GET /api/orders/:id
-// Returns one order. This is the important one for status codes:
-// if the id does not exist we answer 404 instead of pretending
-// the request worked.
-// ------------------------------------------------------------
-
-app.get('/api/orders/:id', (req, res) => {
-// The id arrives from the URL as text, so convert it to a number first.
-const id = Number(req.params.id);
-
-const order = orders.find((o) => o.id === id);
-
-if (!order) {
-return res.status(404).json({ error: 'Order ' + id + ' was not found' });
+  return data;
 }
 
-res.status(200).json(order);
-});
+// ==========================================
+// APIメソッド定義
+// ==========================================
 
-// ------------------------------------------------------------
-// 3. POST /api/orders
-// Creates a new order from the request body.
-// 201 means "created", which is more precise than plain 200.
-// 400 means the request itself was incomplete.
-// ------------------------------------------------------------
-
-app.post('/api/orders', (req, res) => {
-const { item, quantity } = req.body;
-
-if (!item) {
-return res.status(400).json({ error: 'item is required' });
+// 1. GET: Citizen ID で取得
+async function getByCitizenId(citizenId) {
+  const url = BASE_URL + '/api/citizens/' + encodeURIComponent(citizenId);
+  return safeFetch(url, { method: 'GET', headers: HEADERS }, citizenId, 'GET');
 }
 
-const newOrder = {
-id: nextId,
-item: item,
-quantity: quantity || 1,
-status: 'pending'
-};
-
-nextId = nextId + 1;
-orders.push(newOrder);
-
-res.status(201).json(newOrder);
-});
-
-// ------------------------------------------------------------
-// 4. PUT /api/orders/:id
-// Updates the status of an existing order.
-// ------------------------------------------------------------
-
-app.put('/api/orders/:id', (req, res) => {
-const id = Number(req.params.id);
-const order = orders.find((o) => o.id === id);
-
-if (!order) {
-return res.status(404).json({ error: 'Order ' + id + ' was not found' });
+// 2. GET: First Name で検索
+async function getByFirstName({ firstName, lastName = '', country = '' }) {
+  const params = new URLSearchParams({ firstName, lastName, country });
+  const url = BASE_URL + '/api/citizens?' + params.toString();
+  return safeFetch(url, { method: 'GET', headers: HEADERS }, null, 'GET');
 }
 
-const { status } = req.body;
-
-if (!status) {
-return res.status(400).json({ error: 'status is required' });
+// 3. POST: 新規登録
+async function createCitizen({ citizenId, firstName, lastName, country }) {
+  const url = BASE_URL + '/api/citizens';
+  return safeFetch(url, {
+    method: 'POST',
+    headers: HEADERS,
+    body: JSON.stringify({ citizenId, firstName, lastName, country }),
+  }, citizenId, 'POST');
 }
 
-order.status = status;
-
-res.status(200).json(order);
-});
-
-// ------------------------------------------------------------
-// 5. DELETE /api/orders/:id
-// Removes an order from the array.
-// findIndex gives us the position, splice removes it.
-// ------------------------------------------------------------
-
-app.delete('/api/orders/:id', (req, res) => {
-const id = Number(req.params.id);
-const index = orders.findIndex((o) => o.id === id);
-
-if (index === -1) {
-return res.status(404).json({ error: 'Order ' + id + ' was not found' });
+// 4. PUT: 更新（ID指定）
+async function updateCitizen(citizenId, updateData) {
+  const url = BASE_URL + '/api/citizens/' + encodeURIComponent(citizenId);
+  return safeFetch(url, {
+    method: 'PUT',
+    headers: HEADERS,
+    body: JSON.stringify(updateData),
+  }, citizenId, 'PUT');
 }
 
-const removed = orders.splice(index, 1)[0];
+// 5. DELETE: 削除（ID指定）
+async function deleteCitizen(citizenId) {
+  const url = BASE_URL + '/api/citizens/' + encodeURIComponent(citizenId);
+  return safeFetch(url, { method: 'DELETE', headers: HEADERS }, citizenId, 'DELETE');
+}
 
-res.status(200).json({ message: 'Order deleted', order: removed });
-});
+// ==========================================
+// 実行テスト
+// ==========================================
+async function main() {
+  const testId = 'SAMPLE_ID_101';
+  const nonExistentId = 'NON_EXISTENT_999';
 
-// ------------------------------------------------------------
-// START THE SERVER
-// ------------------------------------------------------------
+  console.log('Connecting to Citizen API at: ' + BASE_URL + '\n');
 
-const PORT = 3000;
+  // テスト1: 存在しないIDの取得（エラーメッセージの確認）
+  try {
+    console.log('--- 1. GET by Citizen ID (存在しないIDのテスト) ---');
+    await getByCitizenId(nonExistentId);
+  } catch (err) {
+    console.error(err.message);
+  }
 
+  // テスト2: 新規登録 (POST)
+  try {
+    console.log('\n--- 2. POST (新規作成) ---');
+    const created = await createCitizen({
+      citizenId: testId,
+      firstName: 'Taro',
+      lastName: 'Yamada',
+      country: 'Japan',
+    });
+    console.log('Created:', created);
+  } catch (err) {
+    console.error(err.message);
+  }
+
+  // テスト3: First Name で検索 (GET)
+  try {
+    console.log('\n--- 3. GET (First Name 検索) ---');
+    const result = await getByFirstName({ firstName: 'Taro' });
+    console.log('Search Result:', result);
+  } catch (err) {
+    console.error(err.message);
+  }
+
+  // テスト4: 更新 (PUT)
+  try {
+    console.log('\n--- 4. PUT (更新) ---');
+    const updated = await updateCitizen(testId, {
+      firstName: 'Jiro',
+      lastName: 'Yamada',
+      country: 'Japan',
+    });
+    console.log('Updated:', updated);
+  } catch (err) {
+    console.error(err.message);
+  }
+
+  // テスト5: 削除 (DELETE)
+  try {
+    console.log('\n--- 5. DELETE (削除) ---');
+    const deleted = await deleteCitizen(testId);
+    console.log('Deleted:', deleted);
+  } catch (err) {
+    console.error(err.message);
+  }
+
+  // テスト6: 削除後の再取得（存在しないエラーの確認）
+  try {
+    console.log('\n--- 6. 削除後の存在確認 (存在しないIDテスト) ---');
+    await getByCitizenId(testId);
+  } catch (err) {
+    console.error(err.message);
+  }
+}
+
+main();
