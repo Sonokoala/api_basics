@@ -45,4 +45,6 @@ cd "task 26 Sep" && npm install # 9/26 の課題
 
 Orders API も同じ形で `/api/orders` と `/api/orders/:id` を使います。
 
-Postman のコレクションは `postman/` フォルダにエクスポートして保存します。
+上の全リクエスト（27件、ステータスコードのテスト付き）は `postman/api_basics.postman_collection.json` に入っています。
+Postman で Import → このファイルを選ぶと、Citizens API / Orders API / GET の練習 の3フォルダが追加されます。
+サーバーを起動してから、フォルダの「Run」でまとめて実行することもできます。
